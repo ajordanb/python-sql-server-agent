@@ -1,37 +1,63 @@
-from rocketry import Rocketry
-from rocketry.conds import time_of_day, monthly, weekly, retry
-from db import get_data
-from loguru import logger
+from contextlib import contextmanager
+from typing import Generator
 
-app = Rocketry()
+from sql import DatabaseClientFactory, DatabaseType, DatabaseExplorer
 
 
-@app.task(weekly.on("Sunday") & time_of_day.between("06:00", "12:00") | retry(3))
-def do_weekly():
-    """Runs a task weekly on Sunday between 6 and noon. Max retries if failed: 3"""
+@contextmanager
+def db_explorer(db_type: DatabaseType, **kwargs) -> Generator[DatabaseExplorer, None, None]:
+    client = DatabaseClientFactory.create(db_type, **kwargs)
     try:
-        data = get_data('SELECT * FROM <table_name>')
-        if not data:
-            raise Exception("No data found")
-        logger.info(data)
-        # Do something with data
-    except Exception as e:
-        logger.info(e)
+        yield DatabaseExplorer(client)
+    finally:
+        client.close()
 
 
-@app.task(monthly.at("15th") & time_of_day.between("06:00", "08:00") | retry(3))
-def do_monthly():
-    """Runs a task monthly on the 15th between 6
-    and 8. Max retries if failed: 3"""
-    try:
-        data = get_data('SELECT * FROM <table_name>')
-        if not data:
-            raise Exception("No data found")
-        logger.info(data)
-        # Do something with data
-    except Exception as e:
-        logger.info(e)
+with db_explorer(DatabaseType.SQLITE, database_path=":memory:") as explorer:
+    # Setup: Create a sample table
+    explorer.execute("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE,
+            age INTEGER
+        )
+    """)
 
+    # Insert some data
+    explorer.execute(
+        "INSERT INTO users (name, email, age) VALUES (:name, :email, :age)",
+        {"name": "Alice", "email": "alice@example.com", "age": 30}
+    )
+    explorer.execute(
+        "INSERT INTO users (name, email, age) VALUES (:name, :email, :age)",
+        {"name": "Bob", "email": "bob@example.com", "age": 25}
+    )
+    explorer.execute(
+        "INSERT INTO users (name, email, age) VALUES (:name, :email, :age)",
+        {"name": "Charlie", "email": "charlie@example.com", "age": 35}
+    )
 
-if __name__ == "__main__":
-    app.run()
+    # Demo: fetch_all with parameterized query
+    print("Users older than 26:")
+    users = explorer.fetch_all(
+        "SELECT * FROM users WHERE age > :min_age",
+        {"min_age": 26}
+    )
+    for user in users:
+        print(f"  {user['name']} ({user['age']})")
+
+    # Demo: fetch_one
+    print("\nFind user by email:")
+    user = explorer.fetch_one(
+        "SELECT * FROM users WHERE email = :email",
+        {"email": "bob@example.com"}
+    )
+    print(f"  Found: {user['name']}")
+
+    # Demo: convenience methods
+    print("\nConvenience methods:")
+    print(f"  Total users: {explorer.count('users')}")
+    print(f"  User #1: {explorer.find_by_id('users', 'id', 1)['name']}")
+    print(f"  Has Alice? {explorer.exists('users', 'name', 'Alice')}")
+    print(f"  Has Dave? {explorer.exists('users', 'name', 'Dave')}")

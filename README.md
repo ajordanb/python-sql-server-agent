@@ -1,18 +1,56 @@
-## Python SQL Server Agent Template
-It allows you to run queries on a SQL Server Database and to define a schedule to do so. 
+## Python SQL Database Client
 
-## To install 
-`pip install -r requirements.txt`
+A simple, safe SQL database client supporting multiple databases.
 
-## To run 
-`python app.py`
+### Supported Databases
 
-## To build Dockerfile
-`docker build -t <name> .`
+- SQL Server
+- PostgreSQL
+- MySQL
+- SQLite
 
-## To run Dockerfile
-`docker run <name>`
+### Installation
 
-## Mentions
+```bash
+uv sync
+```
 
-[Rocketry](https://rocketry.readthedocs.io/en/stable/tutorial/index.html) is a very well designed package to schedule tasks. You should definitely check it out
+### Usage
+
+```python
+from sql import DatabaseClientFactory, DatabaseType, DatabaseExplorer
+
+# Create client (SQLite example)
+client = DatabaseClientFactory.create(
+    DatabaseType.SQLITE,
+    database_path=":memory:"
+)
+
+# Use explorer for safe parameterized queries
+explorer = DatabaseExplorer(client)
+
+users = explorer.fetch_all(
+    "SELECT * FROM users WHERE age > :min_age",
+    {"min_age": 18}
+)
+
+# Convenience methods
+user = explorer.find_by_id("users", "id", 123)
+total = explorer.count("users")
+exists = explorer.exists("users", "email", "test@example.com")
+
+client.close()
+```
+
+### Run
+
+```bash
+uv run python app.py
+```
+
+### Docker
+
+```bash
+docker build -t sql-client .
+docker run sql-client
+```

@@ -1,22 +1,21 @@
-FROM python:3.11
+FROM python:3.12
 
 WORKDIR /app
 
-# Install the ODBC Driver 17 for SQL Server and dependencies
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install ODBC Driver 17 for SQL Server
 RUN apt-get update && apt-get install -y curl gnupg && \
     curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
+    curl https://packages.microsoft.com/config/debian/12/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
     apt-get update && \
-    ACCEPT_EULA=Y apt-get install -y msodbcsql17 && \
-    apt-get install -y unixodbc-dev gcc g++ build-essential && \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file to the working directory
-COPY requirements.txt .
+# Copy project files
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
 
-# Install the required packages
-RUN pip install --no-cache-dir -r requirements.txt
-# Copy the app files to the working directory
 COPY . .
-# Start the app
-CMD ["python", "app.py"]
+
+CMD ["uv", "run", "python", "app.py"]
